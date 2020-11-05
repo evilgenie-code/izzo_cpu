@@ -3,21 +3,20 @@
 #include <cstdlib>
 
 
-void vers(const double *V_in, double *Ver_out)
+void vers(const double *vIn, double *verOut)
 {
-    double v_mod = 0;
-    int i;
+    double vMod = 0;
 
-    for (i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++)
     {
-        v_mod += V_in[i] * V_in[i];
+        vMod += vIn[i] * vIn[i];
     }
 
-    double sqrtv_mod = sqrt(v_mod);
+    double sqrtVMod = sqrt(vMod);
 
-    for (i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++)
     {
-        Ver_out[i] = V_in[i] / sqrtv_mod;
+        verOut[i] = vIn[i] / sqrtVMod;
     }
 }
 
@@ -56,122 +55,133 @@ double x2tof(const double &x, const double &s, const double &c, const int lw, co
     {
         return (-a * sqrt(-a)*((sinh(alfa) - alfa) - (sinh(beta) - beta)));
     }
-
 }
 
 void lambert(const float *r0, const float *rk, float t, int lw, int revs, float mu)
 {
-    double R1 = 0.0, R2 = 0.0, dotProd = 0.0, mcrsProd, theta, c, s, T, q,
-            T0 = 0.0, V, am, lambda, x1, x2, y1, y2, xNew, yNew, x;
-    double  r1Unit[3], r2Unit[3], crsProd[3], ucrsProd[3], th1Unit[3], th2Unit[3],
-            r1Double[3], r2Double[3], Tprod0[4] = { T0, 0.0, 0.0, 0.0 }, Td, phr, v1[3], v2[3];
-    int leftBranch = 0;
+    double v1[3], v2[3], r1[3], r2[3], r2Vers[3];
+    double	V, T, r2Mod = 0.0,    // R2 module
+    dotProd = 0.0, // dot product
+    c,		        // non-dimensional chord
+    s,		        // non dimesnional semi-perimeter
+    am,		        // minimum energy ellipse semi major axis
+    lambda,	        //lambda parameter defined in Battin's Book
+    x, x1, x2, y1, y2, xNew = 0, yNew, err, alfa, beta, psi, eta, eta2, sigma1, vr1, vt1, vt2, vr2, r1Mod = 0.0;
+    int iterate, i, leftbranch = 0;
+    const double tolerance = 1e-11;
+    double ihDum[3], ih[3], dum[3];
 
+    double a, p, theta;
 
     if (t <= 0)
     {
-        printf("time is not valid");
         return;
     }
 
-    for (int j = 0; j < 3; j++)
+    for (i = 0; i < 3; i++)
     {
-        r1Double[j] = r0[j];
-        r2Double[j] = rk[j];
+        r1[i] = r0[i];
+        r2[i] = rk[i];
+        r1Mod += r1[i] * r1[i];
     }
 
-    for (int j = 0; j < 3; j++)
-    {
-        R1 += pow(r1Double[j], 2);
-        R2 += pow(r2Double[j], 2);
-    }
+    r1Mod = sqrt(r1Mod);
+    V = sqrt(mu / r1Mod);
+    T = r1Mod / V;
 
-    R1 = sqrt(R1);
-    R2 = sqrt(R2);
-
-    V = sqrt(mu / R1);
-    T = R1 / V;
     t /= T;
 
-    for (int j = 0; j < 3; j++)
+    for (i = 0; i < 3; i++)
     {
-        dotProd += (r1Double[j] * r2Double[j]);
+        r1[i] /= r1Mod;
+        r2[i] /= r1Mod;
+        r2Mod += r2[i] * r2[i];
     }
 
-    theta = acos(dotProd / R2);
+    r2Mod = sqrt(r2Mod);
+
+    for (i = 0;i < 3;i++)
+        dotProd += (r1[i] * r2[i]);
+
+    theta = acos(dotProd / r2Mod);
 
     if (lw)
     {
-        theta = 2 *  acos(-1.0) - theta;
+        theta = 2 * acos(-1.0) - theta;
     }
 
-    c = sqrt(1 + R2 * (R2 - 2.0 * cos(theta)));
-    s = (1 + R2 + c) / 2.0;
+    c = sqrt(1 + r2Mod * (r2Mod - 2.0 * cos(theta)));
+    s = (1 + r2Mod + c) / 2.0;
     am = s / 2.0;
-    lambda = sqrt(R2) * cos(theta / 2.0) / s;
+    lambda = sqrt(r2Mod) * cos(theta / 2.0) / s;
 
     double inn1, inn2;
 
-    const double tolerance = 1e-11;
-
-    int err = 1;
-    int iterate = 0;
-    int imax = 30;
+    err = 1;
+    iterate = 0;
 
     if (revs == 0)
     {
         x1 = log(0.4767);
         x2 = log(1.5233);
-        y1 = log(x2tof(-.5233, s, c, lw, revs)) - std::log(t);
-        y2 = log(x2tof(.5233, s,c,lw, revs)) - std::log(t);
+        y1 = log(x2tof(-.5233, s, c, lw, revs)) - std::log(t);//x2tof âûðàæàåò âðåìÿ ïîëžòà êàê ôóíöèþ õ
+        y2 = log(x2tof(.5233, s, c, lw, revs)) - std::log(t);
 
-        while (err > tolerance && y1 != y2)
+        // Newton iterations
+        while ((err > tolerance) && (y1 != y2))
         {
             iterate++;
-            xNew = (x1 * y2 - y1 * x2)/ (y2 - y2);
+            xNew = (x1 * y2 - y1 * x2) / (y2 - y1);
             yNew = log(x2tof(exp(xNew) - 1, s, c, lw, revs)) - std::log(t);
             x1 = x2;
             y1 = y2;
             x2 = xNew;
             y2 = yNew;
-            x = exp(xNew) - 1;
+            err = fabs(x1 - xNew);
         }
+
+        x = exp(xNew) - 1;
     }
     else
     {
-        inn1 = 0.7234;
-        inn2 = 0.5234;
-
-        if (leftBranch)
+        if (leftbranch == 1)   // left branch
         {
             inn1 = -0.5234;
             inn2 = -0.2234;
         }
+        else			   // right branch
+        {
+            inn1 = 0.7234;
+            inn2 = 0.5234;
+        }
 
         x1 = tan(inn1 * acos(-1.0) / 2);
-        x2 = tan(inn2*acos(-1.0) / 2);
+        x2 = tan(inn2 * acos(-1.0) / 2);
         y1 = x2tof(inn1, s, c, lw, revs) - t;
         y2 = x2tof(inn2, s, c, lw, revs) - t;
 
+        int imax = 30;
+        // Newton Iteration
         while ((err > tolerance) && (y1 != y2) && iterate < imax)
         {
             iterate++;
-            xNew = (x1*y2 - y1 * x2) / (y2 - y1);
+            xNew = (x1 * y2 - y1 * x2) / (y2 - y1);
             yNew = x2tof(atan(xNew) * 2 / acos(-1.0), s, c, lw, revs) - t;
             x1 = x2;
             y1 = y2;
             x2 = xNew;
             y2 = yNew;
-            err = std::abs(x1 - xNew);
+            err = abs(x1 - xNew);
         }
 
         x = atan(xNew) * 2 / acos(-1.0);
+
+        iterate = iterate == imax ? iterate - 1 : iterate;
     }
 
-    double a = am / (1 - x * x); // solution semimajor axis
-    double beta, alfa, psi, eta2, eta;
-
-    if (x < 1)// ellipse
+    a = am / (1 - x * x);		    // solution semimajor axis
+    // psi evaluation
+    if (x < 1)                         // ellipse
     {
         beta = 2 * asin(sqrt((s - c) / (2 * a)));
         if (lw) beta = -beta;
@@ -180,7 +190,7 @@ void lambert(const float *r0, const float *rk, float t, int lw, int revs, float 
         eta2 = 2 * a * pow(sin(psi), 2) / s;
         eta = sqrt(eta2);
     }
-    else
+    else       // hyperbola
     {
         beta = 2 * asinh(sqrt((c - s) / (2 * a)));
         if (lw) beta = -beta;
@@ -190,38 +200,50 @@ void lambert(const float *r0, const float *rk, float t, int lw, int revs, float 
         eta = sqrt(eta2);
     }
 
-    double p = R2 / (am * eta2) * pow(sin(theta / 2), 2);
-    double sigma1 = (1 / (eta * sqrt(am))) * (2 * lambda * am - lambda + x * eta);
-    double ihDum[3], ih[3], dum[3];
-    vett(r1Double, r2Double, ihDum);
+    p = (r2Mod / (am * eta2)) * pow(sin(theta / 2), 2);
+    sigma1 = (1 / (eta * sqrt(am))) * (2 * lambda * am - (lambda + x * eta));
+    vett(r1, r2, ihDum);
     vers(ihDum, ih);
 
     if (lw)
     {
-        for (int i = 0; i < 3; ++i)
-        {
+        for (i = 0; i < 3;i++)
             ih[i] = -ih[i];
-        }
     }
 
-    double vr1 = sigma1;
-    double vt1 = sqrt(p);
-    vett(ih, r1Double, dum);
+    vr1 = sigma1;
+    vt1 = sqrt(p);
+    vett(ih, r1, dum);
 
+    for (i = 0;i < 3;i++)
+        v1[i] = vr1 * r1[i] + vt1 * dum[i];
 
+    vt2 = vt1 / r2Mod;
+    vr2 = -vr1 + (vt1 - vt2) / tan(theta / 2);
+
+    vers(r2, r2Vers);
+    vett(ih, r2Vers, dum);
+    for (i = 0;i < 3;i++)
+        v2[i] = vr2 * r2[i] / r2Mod + vt2 * dum[i];
+
+    printf("iterate = %i \n", iterate);
+
+    for (i = 0;i < 3;i++)
+    {
+        v1[i] *= V;
+        v2[i] *= V;
+
+        printf("v1[%i] = %f, v2[%i] = %f \n", i, v1[i], i, v2[i]);
+    }
 }
 
 int main() {
     double AU = 1.49597870691e8;
     double fMSun = 1.32712440018e11;             // km^3/sec^2
-    double fME = 398600.4415;                    // km^3/sec^2
-    double RE = 6371;                            // km
-    double GaccE = 9.80665 * 1.e-3;                // km/sec^2
 
     double UnitR = AU;
     double UnitV = sqrt(fMSun / UnitR);          // km/sec
     double UnitT = (UnitR / UnitV) / 86400;         // day
-    double UnitA = fMSun / (UnitR * UnitR);
 
     float unitT = 100.0 / UnitT;
     float mu = 1.0;
@@ -230,5 +252,4 @@ int main() {
     float r2[3] = {1.3897892184188783e+00, 1.3377137029002054e-01, -3.1287386211010106e-02};
 
     lambert(r1, r2, unitT, lw, revs, mu);
-//    return 0;
 }
